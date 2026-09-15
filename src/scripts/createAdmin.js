@@ -4,11 +4,11 @@ import Cryptr from "cryptr";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const ADMIN_DATA = {
-    firstName: "Super",
-    lastName:  "Admin",
+    firstName: "Lokendra",
+    lastName:  "Singh",
     email:     "lokendrasinghrajput2007@gmail.com",
-    password:  "Admin@1234",
-    role:      "superadmin",   // must match user.model.js enum
+    password:  "lokendra007",
+    role:      "superadmin",
     isVerified: true,
 };
 // ──────────────────────────────────────────────────────────────────────────────
