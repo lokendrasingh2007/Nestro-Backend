@@ -17,8 +17,6 @@ const register = async (req, res) => {
 
         const otp = Math.floor(100000 + Math.random() * 900000);
         const otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
-        const mailResponse = await sendOtpMail(email, otp);
-        console.log(mailResponse, "mailResponse");
 
         // Agar user exist karta hai lekin unverified hai — OTP update karo
         if (existingUser && !existingUser.isVerified) {
@@ -29,6 +27,9 @@ const register = async (req, res) => {
             existingUser.otpExpiry = otpExpiry;
             if (phone) existingUser.mobile = phone;
             await existingUser.save();
+
+            // Mail background mein bhejo — response block na ho
+            sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
 
             return res.status(201).json({
                 user: { email },
@@ -48,6 +49,9 @@ const register = async (req, res) => {
             otp,
             otpExpiry,
         });
+
+        // Mail background mein bhejo — response block na ho
+        sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
 
         return res.status(201).json({
             user: { email },
@@ -94,10 +98,11 @@ const resendOtp = async (req, res) => {
         if (!user) return sendConflict(res, "User not found");
         const otp = Math.floor(100000 + Math.random() * 900000);
         const otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
-        const mailResponse = await sendOtpMail(email, otp);
         user.otp = otp;
         user.otpExpiry = otpExpiry;
         await user.save();
+        // Mail background mein bhejo
+        sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
         return sendSuccess(res, "OTP resent successfully. Please check your email");
     } catch (error) {
         console.log(error, "error");
@@ -170,15 +175,15 @@ const forgotPassword = async (req, res) => {
             // valid email
             const otp = Math.floor(100000 + Math.random() * 900000);
             const otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
-            const mailResponse = await sendOtpMail(email, otp);
             user.otp = otp;
             user.otpExpiry = otpExpiry;
             await user.save();
+            // Mail background mein bhejo
+            sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
             return res.send({
                 success: true,
                 message: "OTP sent your email",
                 email,
-                otp,
             })
         } else {
             return sendConflict(res, "User with this email does not found");
