@@ -20,7 +20,27 @@ import contactRouter from "./routers/contact.router.js";
 import cookieParser from "cookie-parser";
 server.use(cookieParser())
 server.use(express.json());
-server.use(cors({ origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"], credentials: true }));
+const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "https://nestro-frentend.vercel.app",
+    /^https:\/\/nestro-frentend.*\.vercel\.app$/,  // preview deployments
+];
+
+server.use(cors({
+    origin: (origin, callback) => {
+        // allow server-to-server requests (no origin) and allowed origins
+        if (!origin || allowedOrigins.some(o =>
+            typeof o === 'string' ? o === origin : o.test(origin)
+        )) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS blocked: ${origin}`));
+        }
+    },
+    credentials: true
+}));
 
 server.use("/api/category", categoryRouter)
 server.use("/api/room-type", roomRouter)
