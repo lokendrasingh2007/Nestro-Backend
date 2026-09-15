@@ -8,19 +8,43 @@ import generateToken from "../utils/generateToken.js";
 const register = async (req, res) => {
     try {
         const { firstName, lastName, email, password, phone } = req.body;
-        const user = await UserModel.findOne({ email });
-        if (user) return sendConflict(res, "User already exists");
+        const existingUser = await UserModel.findOne({ email });
+
+        // Agar user exist karta hai aur verified hai
+        if (existingUser && existingUser.isVerified) {
+            return sendConflict(res, "User already exists");
+        }
+
         const otp = Math.floor(100000 + Math.random() * 900000);
         const otpExpiry = new Date(Date.now() + 3 * 60 * 1000);
         const mailResponse = await sendOtpMail(email, otp);
         console.log(mailResponse, "mailResponse");
-        const hashedPassword = cryptr.encrypt(password,);
+
+        // Agar user exist karta hai lekin unverified hai — OTP update karo
+        if (existingUser && !existingUser.isVerified) {
+            existingUser.firstName = firstName;
+            existingUser.lastName  = lastName;
+            existingUser.password  = cryptr.encrypt(password);
+            existingUser.otp       = otp;
+            existingUser.otpExpiry = otpExpiry;
+            if (phone) existingUser.mobile = phone;
+            await existingUser.save();
+
+            return res.status(201).json({
+                user: { email },
+                success: true,
+                message: "OTP sent again. Please check your email for OTP verification",
+            });
+        }
+
+        // Naya user create karo
+        const hashedPassword = cryptr.encrypt(password);
         await UserModel.create({
             firstName,
             lastName,
             email,
             password: hashedPassword,
-            phone,
+            mobile: phone,
             otp,
             otpExpiry,
         });
@@ -92,18 +116,18 @@ const login = async (req, res) => {
         if (!user.isVerified) return sendConflict(res, "Please verify your email before logging in");
         //Send Cookie
         const token = generateToken(user._id);
+        const isProduction = process.env.NODE_ENV === 'production';
         res.cookie('jwt', token, {
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            maxAge: 7 * 24 * 60 * 60 * 1000,
             httpOnly: true,
-            secure: false,
-            sameSite: 'lax'
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax'
         });
-        // role cookie — middleware ke liye (httpOnly false taaki JS bhi read kar sake)
         res.cookie('role', user.role, {
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            maxAge: 7 * 24 * 60 * 60 * 1000,
             httpOnly: false,
-            secure: false,
-            sameSite: 'lax'
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax'
         });
         return res.status(200).json({
             success: true,
@@ -250,8 +274,9 @@ const getAllUsers = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        res.clearCookie('jwt', { httpOnly: true, secure: false, sameSite: 'lax' });
-        res.clearCookie('role', { httpOnly: false, secure: false, sameSite: 'lax' });
+        const isProduction = process.env.NODE_ENV === 'production';
+        res.clearCookie('jwt',  { httpOnly: true,  secure: isProduction, sameSite: isProduction ? 'none' : 'lax' });
+        res.clearCookie('role', { httpOnly: false, secure: isProduction, sameSite: isProduction ? 'none' : 'lax' });
         return res.status(200).json({ success: true, message: "Logged out successfully" });
     } catch (error) {
         console.log(error, "error");
