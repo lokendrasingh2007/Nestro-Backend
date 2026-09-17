@@ -1,49 +1,32 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 /**
- * Lazy Resend client — app.js mein dotenv/config load hone ke baad
- * pehli call par initialize hoga. API key kabhi log nahi hogi.
+ * Nodemailer transporter — Gmail SMTP
+ * Resend free plan sirf verified domain ya owner email par deliver karta hai.
+ * Jab tak domain verify na ho, Gmail SMTP use karo jo kisi bhi email par kaam karta hai.
  */
-let _resend = null;
-const getResend = () => {
-    if (!_resend) {
-        const key = process.env.RESEND_API_KEY;
-        if (!key) {
-            console.error("[email.service] RESEND_API_KEY missing in environment");
-            return null;
-        }
-        _resend = new Resend(key);
-    }
-    return _resend;
-};
-
-/**
- * Resend free plan mein sirf verified domain ya onboarding@resend.dev
- * se bhej sakte hain.
- * - Gmail address (@gmail.com) Resend se directly nahi bhej sakta.
- * - Agar apna domain verify karo (Resend dashboard → Domains) tab
- *   RESEND_FROM_EMAIL=noreply@yourdomain.com set karo.
- * - Tab tak onboarding@resend.dev use hoga (deliver hoga kisi bhi email par).
- */
-const getFromEmail = () => {
-    const from = process.env.RESEND_FROM_EMAIL?.trim();
-    if (!from || from.endsWith("@gmail.com")) {
-        return "Nestro <onboarding@resend.dev>";
-    }
-    return `Nestro <${from}>`;
+const getTransporter = () => {
+    return nodemailer.createTransport({
+        service: "gmail",
+        port: 587,
+        secure: false,
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+        },
+    });
 };
 
 /**
  * OTP verification email bhejo
- * @param {string} toEmail - recipient email
- * @param {number} otp     - 6-digit OTP
+ * @param {string} toEmail
+ * @param {number} otp
  * @returns {Promise<boolean>}
  */
 export const sendOtpEmail = async (toEmail, otp) => {
-    const resend = getResend();
-    if (!resend) return false;
-
     try {
+        const transporter = getTransporter();
+
         const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -71,7 +54,7 @@ export const sendOtpEmail = async (toEmail, otp) => {
     <div class="logo">Nestro<span>.</span></div>
     <div class="divider"></div>
     <div class="badge">🔒 Secure Verification</div>
-    <h1 class="greeting">One-Time Password</h1>
+    <h1 class="greeting">One‑Time Password</h1>
     <p class="sub">Use the code below to verify your account</p>
     <div class="otp-box">${otp}</div>
     <p class="info">
@@ -86,36 +69,30 @@ export const sendOtpEmail = async (toEmail, otp) => {
 </body>
 </html>`;
 
-        const { data, error } = await resend.emails.send({
-            from:    getFromEmail(),
-            to:      toEmail,
+        await transporter.sendMail({
+            from: `"Nestro Furniture" <${process.env.EMAIL_USER}>`,
+            to: toEmail,
             subject: "OTP Verification — Nestro",
             html,
         });
 
-        if (error) {
-            console.error("[email.service] OTP send failed:", error.name, "-", error.message);
-            return false;
-        }
-
-        console.log("[email.service] OTP sent successfully, id:", data?.id);
+        console.log("[email.service] OTP sent to:", toEmail);
         return true;
     } catch (err) {
-        console.error("[email.service] sendOtpEmail exception:", err.message);
+        console.error("[email.service] sendOtpEmail error:", err.message);
         return false;
     }
 };
 
 /**
  * Contact form email bhejo
- * @param {object} params - { toEmail, senderName, senderEmail, subject, message }
+ * @param {object} params
  * @returns {Promise<boolean>}
  */
 export const sendContactEmail = async ({ toEmail, senderName, senderEmail, subject, message }) => {
-    const resend = getResend();
-    if (!resend) return false;
-
     try {
+        const transporter = getTransporter();
+
         const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -152,28 +129,23 @@ export const sendContactEmail = async ({ toEmail, senderName, senderEmail, subje
       <div class="row"><div class="label">Subject</div><div class="value">${subject}</div></div>
       <div class="msg-box">${message}</div>
     </div>
-    <div class="footer">Nestro Furniture · Contact Form Submission · ${new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" })}</div>
+    <div class="footer">Nestro Furniture · ${new Date().toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" })}</div>
   </div>
 </body>
 </html>`;
 
-        const { data, error } = await resend.emails.send({
-            from:     getFromEmail(),
-            to:       toEmail,
-            reply_to: senderEmail,
-            subject:  `[Contact] ${subject} — ${senderName}`,
+        await transporter.sendMail({
+            from: `"Nestro Contact Form" <${process.env.EMAIL_USER}>`,
+            to: toEmail,
+            replyTo: senderEmail,
+            subject: `[Contact] ${subject} — ${senderName}`,
             html,
         });
 
-        if (error) {
-            console.error("[email.service] Contact mail failed:", error.name, "-", error.message);
-            return false;
-        }
-
-        console.log("[email.service] Contact mail sent, id:", data?.id);
+        console.log("[email.service] Contact mail sent to:", toEmail);
         return true;
     } catch (err) {
-        console.error("[email.service] sendContactEmail exception:", err.message);
+        console.error("[email.service] sendContactEmail error:", err.message);
         return false;
     }
 };
