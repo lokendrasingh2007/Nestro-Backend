@@ -7,12 +7,12 @@ import nodemailer from "nodemailer";
  */
 const getTransporter = () => {
     return nodemailer.createTransport({
-        service: "gmail",
-        port: 587,
-        secure: false,
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true, // SSL — Render port 587 block karta hai
         auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
+            pass: process.env.EMAIL_PASS?.replace(/\s/g, ""), // spaces remove
         },
     });
 };
