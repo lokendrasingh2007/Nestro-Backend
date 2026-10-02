@@ -28,10 +28,11 @@ const register = async (req, res) => {
             if (phone) existingUser.mobile = phone;
             await existingUser.save();
 
-            // Mail background mein bhejo — response block na ho
-            sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
+        // Mail bhejo — await karo taaki Render logs mein result dike
+        const mailSent = await sendOtpMail(email, otp);
+        console.log("[register] OTP mail result for unverified user:", mailSent);
 
-            return res.status(201).json({
+        return res.status(201).json({
                 user: { email },
                 success: true,
                 message: "OTP sent again. Please check your email for OTP verification",
@@ -50,8 +51,9 @@ const register = async (req, res) => {
             otpExpiry,
         });
 
-        // Mail background mein bhejo — response block na ho
-        sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
+        // Mail bhejo — await karo taaki Render logs mein result dike
+        const mailSent = await sendOtpMail(email, otp);
+        console.log("[register] OTP mail result for new user:", mailSent);
 
         return res.status(201).json({
             user: { email },
@@ -101,8 +103,9 @@ const resendOtp = async (req, res) => {
         user.otp = otp;
         user.otpExpiry = otpExpiry;
         await user.save();
-        // Mail background mein bhejo
-        sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
+        // Mail bhejo — await karo taaki logs mein result dike
+        const mailSent = await sendOtpMail(email, otp);
+        console.log("[resendOtp] OTP mail result:", mailSent);
         return sendSuccess(res, "OTP resent successfully. Please check your email");
     } catch (error) {
         console.log(error, "error");
@@ -179,8 +182,9 @@ const forgotPassword = async (req, res) => {
             user.otp = otp;
             user.otpExpiry = otpExpiry;
             await user.save();
-            // Mail background mein bhejo
-            sendOtpMail(email, otp).catch(err => console.error("OTP mail error:", err));
+            // Mail bhejo — await karo taaki logs mein result dike
+            const mailSent = await sendOtpMail(email, otp);
+            console.log("[forgotPassword] OTP mail result:", mailSent);
             return res.send({
                 success: true,
                 message: "OTP sent your email",

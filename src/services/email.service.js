@@ -11,24 +11,34 @@ import { BrevoClient } from "@getbrevo/brevo";
  * API key kabhi log nahi hogi.
  */
 
-let _client = null;
-
-const getClient = () => {
-    if (!_client) {
-        const key = process.env.BREVO_API_KEY;
-        if (!key) {
-            console.error("[email.service] BREVO_API_KEY missing in environment");
-            return null;
-        }
-        _client = new BrevoClient({ apiKey: key });
-    }
-    return _client;
+// ─── Helper: email mask karo logs ke liye ─────────────────────────────────────
+const maskEmail = (email) => {
+    if (!email || !email.includes("@")) return "***";
+    const [user, domain] = email.split("@");
+    return `${user.slice(0, 2)}***@${domain}`;
 };
 
-const getSender = () => ({
-    email: process.env.BREVO_SENDER_EMAIL,
-    name:  process.env.BREVO_SENDER_NAME || "Nestro",
-});
+// ─── Brevo client — har call par fresh (Render cold-start safe) ───────────────
+const getClient = () => {
+    const key = process.env.BREVO_API_KEY?.trim();
+    if (!key) {
+        console.error("[email.service] ❌ BREVO_API_KEY is missing or empty");
+        return null;
+    }
+    console.log("[email.service] ✅ BREVO_API_KEY present, length:", key.length);
+    return new BrevoClient({ apiKey: key });
+};
+
+const getSender = () => {
+    const email = process.env.BREVO_SENDER_EMAIL?.trim();
+    const name  = process.env.BREVO_SENDER_NAME?.trim() || "Nestro";
+    if (!email) {
+        console.error("[email.service] ❌ BREVO_SENDER_EMAIL is missing or empty");
+    } else {
+        console.log("[email.service] ✅ Sender:", maskEmail(email), "| Name:", name);
+    }
+    return { email, name };
+};
 
 // ─── OTP HTML Template ────────────────────────────────────────────────────────
 const buildOtpHtml = (otp) => `
@@ -123,23 +133,34 @@ const buildContactHtml = ({ senderName, senderEmail, subject, message }) => `
  * @returns {Promise<boolean>}
  */
 export const sendOtpEmail = async (toEmail, otp) => {
+    console.log("[email.service] 📧 OTP email service called for:", maskEmail(toEmail));
+
     const client = getClient();
     if (!client) return false;
 
+    const sender = getSender();
+    if (!sender.email) return false;
+
     try {
-        await client.transactionalEmails.sendTransacEmail({
-            sender:      getSender(),
+        console.log("[email.service] 🚀 Sending email through Brevo...");
+
+        const result = await client.transactionalEmails.sendTransacEmail({
+            sender,
             to:          [{ email: toEmail }],
             subject:     "OTP Verification — Nestro",
             htmlContent: buildOtpHtml(otp),
         });
 
-        console.log("[email.service] OTP sent to:", toEmail);
+        const messageId = result?.body?.messageId || result?.messageId || "delivered";
+        console.log("[email.service] ✅ OTP email sent successfully | messageId:", messageId);
         return true;
+
     } catch (err) {
-        const status  = err?.status || err?.response?.status || "unknown";
-        const errBody = err?.body   || err?.response?.body   || err?.message || "unknown";
-        console.error("[email.service] sendOtpEmail failed | status:", status, "| detail:", JSON.stringify(errBody));
+        const status  = err?.status   || err?.response?.status   || "unknown";
+        const errBody = err?.body     || err?.response?.body      || {};
+        const errMsg  = errBody?.message || err?.message          || "unknown error";
+        const errCode = errBody?.code  || "no-code";
+        console.error("[email.service] ❌ Brevo OTP send failed | status:", status, "| code:", errCode, "| message:", errMsg);
         return false;
     }
 };
@@ -151,24 +172,35 @@ export const sendOtpEmail = async (toEmail, otp) => {
  * @returns {Promise<boolean>}
  */
 export const sendContactEmail = async ({ toEmail, senderName, senderEmail, subject, message }) => {
+    console.log("[email.service] 📧 Contact email service called for:", maskEmail(toEmail));
+
     const client = getClient();
     if (!client) return false;
 
+    const sender = getSender();
+    if (!sender.email) return false;
+
     try {
-        await client.transactionalEmails.sendTransacEmail({
-            sender:      getSender(),
+        console.log("[email.service] 🚀 Sending contact email through Brevo...");
+
+        const result = await client.transactionalEmails.sendTransacEmail({
+            sender,
             to:          [{ email: toEmail }],
             replyTo:     { email: senderEmail, name: senderName },
             subject:     `[Contact] ${subject} — ${senderName}`,
             htmlContent: buildContactHtml({ senderName, senderEmail, subject, message }),
         });
 
-        console.log("[email.service] Contact mail sent to:", toEmail);
+        const messageId = result?.body?.messageId || result?.messageId || "delivered";
+        console.log("[email.service] ✅ Contact email sent | messageId:", messageId);
         return true;
+
     } catch (err) {
-        const status  = err?.status || err?.response?.status || "unknown";
-        const errBody = err?.body   || err?.response?.body   || err?.message || "unknown";
-        console.error("[email.service] sendContactEmail failed | status:", status, "| detail:", JSON.stringify(errBody));
+        const status  = err?.status   || err?.response?.status   || "unknown";
+        const errBody = err?.body     || err?.response?.body      || {};
+        const errMsg  = errBody?.message || err?.message          || "unknown error";
+        const errCode = errBody?.code  || "no-code";
+        console.error("[email.service] ❌ Brevo contact mail failed | status:", status, "| code:", errCode, "| message:", errMsg);
         return false;
     }
 };
