@@ -1,5 +1,6 @@
 import ContactModel from "../models/contact.model.js";
 import sendContactMail from "../utils/sendContactMail.js";
+import { sendContactEmail } from "../services/email.service.js";
 import { sendBadRequest, sendNotFound, sendServerError } from "../utils/response.js";
 
 // POST /api/contact — save to DB + send email
@@ -81,13 +82,6 @@ const replyContact = async (req, res) => {
         const contact = await ContactModel.findById(id);
         if (!contact) return sendNotFound(res, "Message not found");
 
-        const transporter = (await import("nodemailer")).default.createTransport({
-            service: "gmail",
-            port: 587,
-            secure: false,
-            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-        });
-
         const html = `
 <!DOCTYPE html>
 <html>
@@ -123,12 +117,17 @@ const replyContact = async (req, res) => {
 </body>
 </html>`;
 
-        await transporter.sendMail({
-            from:    `"Nestro Support" <${process.env.EMAIL_USER}>`,
-            to:      contact.email,
-            subject: `Re: ${contact.subject}`,
-            html,
+        // Brevo se reply bhejo
+        const { BrevoClient } = await import("@getbrevo/brevo");
+        const client = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
+        await client.transactionalEmails.sendTransacEmail({
+            sender:      { email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME || "Nestro" },
+            to:          [{ email: contact.email, name: contact.firstName }],
+            subject:     `Re: ${contact.subject}`,
+            htmlContent: html,
         });
+
+        console.log("[replyContact] Reply sent via Brevo to:", contact.email);
 
         // Mark as read after replying
         contact.isRead = true;
@@ -136,7 +135,7 @@ const replyContact = async (req, res) => {
 
         return res.status(200).json({ success: true, message: "Reply sent successfully!" });
     } catch (error) {
-        console.error(error);
+        console.error("[replyContact] error:", error?.message || error);
         return sendServerError(res, "Failed to send reply");
     }
 };
