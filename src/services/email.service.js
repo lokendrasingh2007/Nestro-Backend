@@ -1,33 +1,37 @@
-import nodemailer from "nodemailer";
+import { BrevoClient } from "@getbrevo/brevo";
 
 /**
- * Nodemailer transporter — Gmail SMTP
- * Resend free plan sirf verified domain ya owner email par deliver karta hai.
- * Jab tak domain verify na ho, Gmail SMTP use karo jo kisi bhi email par kaam karta hai.
+ * Brevo Transactional Email Service
+ *
+ * Required env vars:
+ *   BREVO_API_KEY          — Brevo dashboard > SMTP & API > API Keys
+ *   BREVO_SENDER_EMAIL     — Brevo mein verified sender email
+ *   BREVO_SENDER_NAME      — Sender display name (e.g. "Nestro")
+ *
+ * API key kabhi log nahi hogi.
  */
-const getTransporter = () => {
-    return nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true, // SSL — Render port 587 block karta hai
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS?.replace(/\s/g, ""), // spaces remove
-        },
-    });
+
+let _client = null;
+
+const getClient = () => {
+    if (!_client) {
+        const key = process.env.BREVO_API_KEY;
+        if (!key) {
+            console.error("[email.service] BREVO_API_KEY missing in environment");
+            return null;
+        }
+        _client = new BrevoClient({ apiKey: key });
+    }
+    return _client;
 };
 
-/**
- * OTP verification email bhejo
- * @param {string} toEmail
- * @param {number} otp
- * @returns {Promise<boolean>}
- */
-export const sendOtpEmail = async (toEmail, otp) => {
-    try {
-        const transporter = getTransporter();
+const getSender = () => ({
+    email: process.env.BREVO_SENDER_EMAIL,
+    name:  process.env.BREVO_SENDER_NAME || "Nestro",
+});
 
-        const html = `
+// ─── OTP HTML Template ────────────────────────────────────────────────────────
+const buildOtpHtml = (otp) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -69,31 +73,8 @@ export const sendOtpEmail = async (toEmail, otp) => {
 </body>
 </html>`;
 
-        await transporter.sendMail({
-            from: `"Nestro Furniture" <${process.env.EMAIL_USER}>`,
-            to: toEmail,
-            subject: "OTP Verification — Nestro",
-            html,
-        });
-
-        console.log("[email.service] OTP sent to:", toEmail);
-        return true;
-    } catch (err) {
-        console.error("[email.service] sendOtpEmail error:", err.message);
-        return false;
-    }
-};
-
-/**
- * Contact form email bhejo
- * @param {object} params
- * @returns {Promise<boolean>}
- */
-export const sendContactEmail = async ({ toEmail, senderName, senderEmail, subject, message }) => {
-    try {
-        const transporter = getTransporter();
-
-        const html = `
+// ─── Contact HTML Template ────────────────────────────────────────────────────
+const buildContactHtml = ({ senderName, senderEmail, subject, message }) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -134,18 +115,60 @@ export const sendContactEmail = async ({ toEmail, senderName, senderEmail, subje
 </body>
 </html>`;
 
-        await transporter.sendMail({
-            from: `"Nestro Contact Form" <${process.env.EMAIL_USER}>`,
-            to: toEmail,
-            replyTo: senderEmail,
-            subject: `[Contact] ${subject} — ${senderName}`,
-            html,
+// ─── sendOtpEmail ─────────────────────────────────────────────────────────────
+/**
+ * OTP email bhejo via Brevo
+ * @param {string} toEmail
+ * @param {number} otp
+ * @returns {Promise<boolean>}
+ */
+export const sendOtpEmail = async (toEmail, otp) => {
+    const client = getClient();
+    if (!client) return false;
+
+    try {
+        await client.transactionalEmails.sendTransacEmail({
+            sender:      getSender(),
+            to:          [{ email: toEmail }],
+            subject:     "OTP Verification — Nestro",
+            htmlContent: buildOtpHtml(otp),
+        });
+
+        console.log("[email.service] OTP sent to:", toEmail);
+        return true;
+    } catch (err) {
+        const status  = err?.status || err?.response?.status || "unknown";
+        const errBody = err?.body   || err?.response?.body   || err?.message || "unknown";
+        console.error("[email.service] sendOtpEmail failed | status:", status, "| detail:", JSON.stringify(errBody));
+        return false;
+    }
+};
+
+// ─── sendContactEmail ─────────────────────────────────────────────────────────
+/**
+ * Contact form email bhejo via Brevo
+ * @param {{ toEmail, senderName, senderEmail, subject, message }} params
+ * @returns {Promise<boolean>}
+ */
+export const sendContactEmail = async ({ toEmail, senderName, senderEmail, subject, message }) => {
+    const client = getClient();
+    if (!client) return false;
+
+    try {
+        await client.transactionalEmails.sendTransacEmail({
+            sender:      getSender(),
+            to:          [{ email: toEmail }],
+            replyTo:     { email: senderEmail, name: senderName },
+            subject:     `[Contact] ${subject} — ${senderName}`,
+            htmlContent: buildContactHtml({ senderName, senderEmail, subject, message }),
         });
 
         console.log("[email.service] Contact mail sent to:", toEmail);
         return true;
     } catch (err) {
-        console.error("[email.service] sendContactEmail error:", err.message);
+        const status  = err?.status || err?.response?.status || "unknown";
+        const errBody = err?.body   || err?.response?.body   || err?.message || "unknown";
+        console.error("[email.service] sendContactEmail failed | status:", status, "| detail:", JSON.stringify(errBody));
         return false;
     }
 };
